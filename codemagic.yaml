@@ -1,18 +1,77 @@
 workflows:
-  android-release:
-    name: Build Android APK
-    max_build_duration: 60
-    instance_type: mac_mini_m2
+  android-workflow:
+    name: DroidMonitor - Android
+    max_build_duration: 30
+    instance_type: linux_x2
+    working_directory: android
+
     environment:
-      flutter: stable
+      # Não precisa de Mac/Xcode: é só Android.
+      java: 17
+      vars:
+        PACKAGE_NAME: "com.droidmonitor"
+      # Para builds de RELEASE assinados, crie no Codemagic um Group de
+      # variáveis de ambiente (ex.: "droidmonitor_keystore") com:
+      #   CM_KEYSTORE            -> upload do arquivo .jks/.keystore (encoded)
+      #   CM_KEYSTORE_PASSWORD
+      #   CM_KEY_ALIAS
+      #   CM_KEY_PASSWORD
+      # e descomente as linhas abaixo:
+      # groups:
+      #   - droidmonitor_keystore
+
+    cache:
+      cache_paths:
+        - ~/.gradle/caches
+        - ~/.gradle/wrapper
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+      cancel_previous_builds: true
+
     scripts:
-      - name: Entrar na pasta e pegar dependências
+      - name: Gerar Gradle Wrapper (caso o repositório não versione o .jar do wrapper)
         script: |
-          cd Android
-          flutter pub get
-      - name: Build APK
+          if [ ! -f "./gradlew" ]; then
+            gradle wrapper --gradle-version 8.7
+          fi
+          chmod +x ./gradlew
+
+      # Descomente este bloco se estiver usando assinatura de release
+      # (variáveis vindas do group "droidmonitor_keystore" configurado acima):
+      # - name: Configurar assinatura de release
+      #   script: |
+      #     echo $CM_KEYSTORE | base64 --decode > $CM_BUILD_DIR/android/app/keystore.jks
+      #     cat >> "$CM_BUILD_DIR/android/local.properties" <<EOF
+      #     storeFile=keystore.jks
+      #     storePassword=$CM_KEYSTORE_PASSWORD
+      #     keyAlias=$CM_KEY_ALIAS
+      #     keyPassword=$CM_KEY_PASSWORD
+      #     EOF
+
+      - name: Build APK debug
         script: |
-          cd Android
-          flutter build apk --release
+          ./gradlew assembleDebug --stacktrace
+
+      # Troque assembleDebug por bundleRelease acima (ou adicione esta
+      # etapa) quando a assinatura de release estiver configurada:
+      # - name: Build AAB release
+      #   script: |
+      #     ./gradlew bundleRelease --stacktrace
+
     artifacts:
-      - Android/build/app/outputs/flutter-apk/app-release.apk
+      - android/app/build/outputs/**/*.apk
+      - android/app/build/outputs/**/*.aab
+      - android/app/build/outputs/**/mapping.txt
+      - android/app/build/reports
+
+    publishing:
+      email:
+        recipients: []
+        notify:
+          success: true
+          failure: true
