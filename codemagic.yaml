@@ -69,9 +69,12 @@ workflows:
       - android/app/build/outputs/**/mapping.txt
       - android/app/build/reports
 
-    publishing:
-      email:
-        recipients: []
-        notify:
-          success: true
-          failure: true
+    # Publicação por e-mail é opcional. Para ativar, descomente e preencha
+    # com pelo menos um destinatário (lista vazia é inválida no schema):
+    # publishing:
+    #   email:
+    #     recipients:
+    #       - seu-email@exemplo.com
+    #     notify:
+    #       success: true
+    #       failure: true
