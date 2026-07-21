@@ -17,7 +17,7 @@ workflows:
       - name: Entrar na pasta android e buildar
         script: |
           cd android
-          ./gradlew assembleRelease --stacktrace
+          ./gradlew assembleDebug --stacktrace
 
     artifacts:
-      - android/app/build/outputs/apk/release/*.apk
+      - android/app/build/outputs/apk/debug/*.apk
