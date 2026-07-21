@@ -5,10 +5,11 @@ workflows:
     instance_type: mac_mini_m2
     environment:
       java: 17
+      working_directory: android  # <- ENTRA NA PASTA AQUI
     scripts:
       - name: Dar permissão ao Gradle
         script: chmod +x ./gradlew
       - name: Build APK Release
         script: ./gradlew assembleRelease
     artifacts:
-      - app/build/outputs/apk/release/*.apk
+      - build/outputs/apk/release/*.apk  # <- caminho muda tbm
