@@ -6,10 +6,18 @@ workflows:
     environment:
       java: 17
     scripts:
+      - name: Gerar Gradle Wrapper (gradlew não está versionado no repo)
+        script: |
+          cd android
+          if [ ! -f "./gradlew" ]; then
+            gradle wrapper --gradle-version 8.7
+          fi
+          chmod +x ./gradlew
+
       - name: Entrar na pasta android e buildar
         script: |
           cd android
-          chmod +x ./gradlew
-          ./gradlew assembleRelease
+          ./gradlew assembleRelease --stacktrace
+
     artifacts:
-      - android/build/outputs/apk/release/*.apk
+      - android/app/build/outputs/apk/release/*.apk
