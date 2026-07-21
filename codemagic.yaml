@@ -1,80 +1,15 @@
 workflows:
-  android-workflow:
-    name: DroidMonitor - Android
-    max_build_duration: 30
-    instance_type: linux_x2
-    working_directory: android
-
+  android-native-release:
+    name: Build Android APK Nativo
+    max_build_duration: 60
+    instance_type: mac_mini_m2
     environment:
-      # Não precisa de Mac/Xcode: é só Android.
+      android_tools: latest
       java: 17
-      vars:
-        PACKAGE_NAME: "com.droidmonitor"
-      # Para builds de RELEASE assinados, crie no Codemagic um Group de
-      # variáveis de ambiente (ex.: "droidmonitor_keystore") com:
-      #   CM_KEYSTORE            -> upload do arquivo .jks/.keystore (encoded)
-      #   CM_KEYSTORE_PASSWORD
-      #   CM_KEY_ALIAS
-      #   CM_KEY_PASSWORD
-      # e descomente as linhas abaixo:
-      # groups:
-      #   - droidmonitor_keystore
-
-    cache:
-      cache_paths:
-        - ~/.gradle/caches
-        - ~/.gradle/wrapper
-
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
-      cancel_previous_builds: true
-
     scripts:
-      - name: Gerar Gradle Wrapper (caso o repositório não versione o .jar do wrapper)
-        script: |
-          if [ ! -f "./gradlew" ]; then
-            gradle wrapper --gradle-version 8.7
-          fi
-          chmod +x ./gradlew
-
-      # Descomente este bloco se estiver usando assinatura de release
-      # (variáveis vindas do group "droidmonitor_keystore" configurado acima):
-      # - name: Configurar assinatura de release
-      #   script: |
-      #     echo $CM_KEYSTORE | base64 --decode > $CM_BUILD_DIR/android/app/keystore.jks
-      #     cat >> "$CM_BUILD_DIR/android/local.properties" <<EOF
-      #     storeFile=keystore.jks
-      #     storePassword=$CM_KEYSTORE_PASSWORD
-      #     keyAlias=$CM_KEY_ALIAS
-      #     keyPassword=$CM_KEY_PASSWORD
-      #     EOF
-
-      - name: Build APK debug
-        script: |
-          ./gradlew assembleDebug --stacktrace
-
-      # Troque assembleDebug por bundleRelease acima (ou adicione esta
-      # etapa) quando a assinatura de release estiver configurada:
-      # - name: Build AAB release
-      #   script: |
-      #     ./gradlew bundleRelease --stacktrace
-
+      - name: Dar permissão ao Gradle
+        script: chmod +x ./gradlew
+      - name: Build APK Release
+        script: ./gradlew assembleRelease
     artifacts:
-      - android/app/build/outputs/**/*.apk
-      - android/app/build/outputs/**/*.aab
-      - android/app/build/outputs/**/mapping.txt
-      - android/app/build/reports
-
-    # Publicação por e-mail é opcional. Para ativar, descomente e preencha
-    # com pelo menos um destinatário (lista vazia é inválida no schema):
-    # publishing:
-    #   email:
-    #     recipients:
-    #       - seu-email@exemplo.com
-    #     notify:
-    #       success: true
-    #       failure: true
+      - app/build/outputs/apk/release/*.apk
