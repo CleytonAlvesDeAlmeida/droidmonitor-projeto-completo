@@ -5,12 +5,11 @@ workflows:
     instance_type: mac_mini_m2
     environment:
       flutter: stable
+      working_directory: Android
     scripts:
-      - name: Entrar na pasta Android
-        script: cd Android
       - name: Pegar dependências
         script: flutter pub get
       - name: Build APK
         script: flutter build apk --release
     artifacts:
-      - Android/build/app/outputs/flutter-apk/app-release.apk
+      - build/app/outputs/flutter-apk/app-release.apk
