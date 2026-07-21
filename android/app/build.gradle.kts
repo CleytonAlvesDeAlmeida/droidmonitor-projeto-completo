@@ -61,7 +61,7 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     // WebRTC (recepção de vídeo + data channel)
-    implementation("org.webrtc:google-webrtc:1.0.32006")
+    implementation("io.github.webrtc-sdk:android:125.6422.04")
 
     // Descoberta mDNS na rede local
     implementation("org.jmdns:jmdns:3.5.9")
