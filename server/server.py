@@ -178,7 +178,7 @@ class ScreenCaptureTrack(VideoStreamTrack):
 
         raw = self._sct.grab(self._monitor)
         img = np.array(raw)  # BGRA
-        img = img[:, :, :3]  # descarta alpha -> BGR
+        img = np.ascontiguousarray(img[:, :, :3])  # descarta alpha -> BGR contíguo
 
         # Redimensiona (sem dependências extras: usa amostragem simples via numpy/PIL do av)
         frame = VideoFrame.from_ndarray(img, format="bgr24")
