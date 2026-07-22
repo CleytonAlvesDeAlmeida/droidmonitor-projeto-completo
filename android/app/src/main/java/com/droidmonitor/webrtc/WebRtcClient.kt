@@ -60,8 +60,12 @@ class WebRtcClient(
             .createPeerConnectionFactory()
     }
 
+    private var pendingOfferQuality: String? = null
+
     /** Cria a PeerConnection, gera a offer (recvonly de vídeo) e envia via sinalização. */
     fun startConnection(quality: String) {
+        pendingOfferQuality = quality
+
         val rtcConfig = PeerConnection.RTCConfiguration(emptyList<PeerConnection.IceServer>()).apply {
             // Sem servidores STUN/TURN: conexão é sempre direta na rede local.
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
@@ -70,8 +74,9 @@ class WebRtcClient(
 
         peerConnection = factory.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
             override fun onIceCandidate(candidate: IceCandidate?) {
-                // aiortc inclui os candidatos diretamente no SDP (sem trickle),
-                // então não é necessário retransmiti-los aqui.
+                // Não usamos trickle ICE (candidatos avulsos via sinalização).
+                // Em vez disso, esperamos onIceGatheringChange == COMPLETE e
+                // mandamos a SDP já com todos os candidatos embutidos.
             }
 
             override fun onAddStream(stream: MediaStream?) {
@@ -95,7 +100,24 @@ class WebRtcClient(
 
             override fun onSignalingChange(state: PeerConnection.SignalingState?) {}
             override fun onIceConnectionReceivingChange(receiving: Boolean) {}
-            override fun onIceGatheringChange(state: PeerConnection.IceGatheringState?) {}
+
+            override fun onIceGatheringChange(state: PeerConnection.IceGatheringState?) {
+                Log.i(TAG, "Estado de coleta ICE: $state")
+                if (state == PeerConnection.IceGatheringState.COMPLETE) {
+                    // Só agora a SDP local tem todos os candidatos ICE embutidos.
+                    val localDesc = peerConnection?.localDescription
+                    val quality = pendingOfferQuality
+                    if (localDesc != null && quality != null) {
+                        pendingOfferQuality = null
+                        signalingClient.sendOffer(
+                            sdp = localDesc.description,
+                            sdpType = "offer",
+                            quality = quality,
+                        )
+                    }
+                }
+            }
+
             override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) {}
 
             override fun onAddTrack(receiver: org.webrtc.RtpReceiver?, streams: Array<out MediaStream>?) {
@@ -131,12 +153,9 @@ class WebRtcClient(
 
         peerConnection?.createOffer(object : SdpObserver by NoopSdpObserver {
             override fun onCreateSuccess(desc: SessionDescription) {
+                // Não envia aqui: essa SDP ainda não tem candidatos ICE.
+                // O envio real acontece em onIceGatheringChange(COMPLETE).
                 peerConnection?.setLocalDescription(NoopSdpObserver, desc)
-                signalingClient.sendOffer(
-                    sdp = desc.description,
-                    sdpType = "offer",
-                    quality = quality,
-                )
             }
 
             override fun onCreateFailure(error: String?) {
