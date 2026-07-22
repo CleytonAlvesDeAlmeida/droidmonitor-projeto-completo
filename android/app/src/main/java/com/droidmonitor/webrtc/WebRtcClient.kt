@@ -75,9 +75,12 @@ class WebRtcClient(
             }
 
             override fun onAddStream(stream: MediaStream?) {
+                // Callback legado (Plan B) — mantido como fallback, mas não é
+                // garantido disparar em Unified Plan. A captura real da track
+                // acontece em onAddTrack, abaixo.
                 val track = stream?.videoTracks?.firstOrNull()
                 if (track != null) {
-                    Log.i(TAG, "Track de vídeo remota recebida")
+                    Log.i(TAG, "Track de vídeo remota recebida (onAddStream)")
                     listener?.onRemoteVideoTrack(track)
                 }
             }
@@ -94,7 +97,16 @@ class WebRtcClient(
             override fun onIceConnectionReceivingChange(receiving: Boolean) {}
             override fun onIceGatheringChange(state: PeerConnection.IceGatheringState?) {}
             override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) {}
-            override fun onAddTrack(receiver: org.webrtc.RtpReceiver?, streams: Array<out MediaStream>?) {}
+
+            override fun onAddTrack(receiver: org.webrtc.RtpReceiver?, streams: Array<out MediaStream>?) {
+                // Callback correto para Unified Plan (o modo configurado nesta PeerConnection).
+                val track = receiver?.track()
+                if (track is VideoTrack) {
+                    Log.i(TAG, "Track de vídeo remota recebida (onAddTrack)")
+                    listener?.onRemoteVideoTrack(track)
+                }
+            }
+
             override fun onRemoveStream(stream: MediaStream?) {}
             override fun onRenegotiationNeeded() {}
         })
