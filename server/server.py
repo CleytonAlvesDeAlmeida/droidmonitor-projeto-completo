@@ -248,7 +248,12 @@ def handle_control_message(raw_msg: str, screen_track: ScreenCaptureTrack):
 # --------------------------------------------------------------------------
 
 async def websocket_handler(request: web.Request):
-    ws = web.WebSocketResponse(heartbeat=20)
+    # Sem heartbeat automático: o WebSocket de sinalização só precisa ficar
+    # vivo para a troca inicial de PIN/SDP e para mudanças de qualidade
+    # depois. Um heartbeat agressivo aqui fechava a sinalização sozinho após
+    # ~20s (por falta de "pong" a tempo), derrubando o WebRTC junto mesmo
+    # com a conexão de vídeo saudável.
+    ws = web.WebSocketResponse(heartbeat=None)
     await ws.prepare(request)
     peer_ip = request.remote
 
