@@ -332,6 +332,22 @@ async def websocket_handler(request: web.Request):
                 answer = await pc.createAnswer()
                 await pc.setLocalDescription(answer)
 
+                # Espera a coleta de candidatos ICE terminar antes de enviar a
+                # answer, para garantir que a SDP já saia com todos os
+                # candidatos embutidos (mesmo cuidado aplicado no Android).
+                if pc.iceGatheringState != "complete":
+                    gathering_done = asyncio.Event()
+
+                    @pc.on("icegatheringstatechange")
+                    def on_ice_gathering_change():
+                        if pc.iceGatheringState == "complete":
+                            gathering_done.set()
+
+                    try:
+                        await asyncio.wait_for(gathering_done.wait(), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        log.warning("Timeout esperando coleta de candidatos ICE; enviando SDP mesmo assim.")
+
                 await ws.send_json({
                     "type": "answer",
                     "sdp": pc.localDescription.sdp,
