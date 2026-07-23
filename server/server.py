@@ -26,6 +26,7 @@ Requisitos: ver requirements.txt
 """
 
 import asyncio
+import concurrent.futures
 import fractions
 import ipaddress
 import json
@@ -148,12 +149,25 @@ async def local_network_only_middleware(request: web.Request, handler):
 # --------------------------------------------------------------------------
 
 class ScreenCaptureTrack(VideoStreamTrack):
-    """Captura a tela com mss e entrega frames para o aiortc."""
+    """Captura a tela com mss e entrega frames para o aiortc.
+
+    A captura (mss.grab) e o redimensionamento (PyAV/libswscale) são
+    bloqueantes e consomem CPU. Rodá-los direto na coroutine recv() travaria
+    o loop de eventos do asyncio — o mesmo loop que o aiortc usa para
+    manter a conexão WebRTC viva (respostas a checks de "consent freshness"
+    do ICE, envio de RTP, etc.). Por isso essa parte roda numa thread
+    dedicada via run_in_executor, mantendo recv() de fato assíncrona.
+    """
 
     def __init__(self, quality: str = DEFAULT_QUALITY):
         super().__init__()
-        self._sct = mss.mss()
-        self._monitor = self._sct.monitors[1]  # monitor principal
+        # Uma única thread dedicada: o mss (principalmente no Windows) tem
+        # afinidade de thread para seus recursos internos (GDI), então a
+        # instância de mss.mss() precisa ser criada e usada sempre na
+        # mesma thread — daí max_workers=1 e a criação lazy dentro dela.
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        self._sct = None  # criado dentro da thread dedicada, no primeiro uso
+        self._monitor = None
         self.set_quality(quality)
         self._time_base = fractions.Fraction(1, 90000)
         self._frame_count = 0
@@ -166,6 +180,21 @@ class ScreenCaptureTrack(VideoStreamTrack):
         self._fps = preset["fps"]
         self._frame_interval = 1.0 / self._fps
 
+    def _capture_and_convert(self):
+        """Roda inteiramente na thread dedicada: captura, converte e redimensiona."""
+        if self._sct is None:
+            self._sct = mss.mss()
+            self._monitor = self._sct.monitors[1]  # monitor principal
+
+        raw = self._sct.grab(self._monitor)
+        img = np.array(raw)  # BGRA
+        img = np.ascontiguousarray(img[:, :, :3])  # descarta alpha -> BGR contíguo
+
+        frame = VideoFrame.from_ndarray(img, format="bgr24")
+        if (frame.width, frame.height) != (self._target_w, self._target_h):
+            frame = frame.reformat(width=self._target_w, height=self._target_h)
+        return frame
+
     async def recv(self):
         if self._start_time is None:
             self._start_time = time.time()
@@ -176,20 +205,18 @@ class ScreenCaptureTrack(VideoStreamTrack):
         if next_frame_time > now:
             await asyncio.sleep(next_frame_time - now)
 
-        raw = self._sct.grab(self._monitor)
-        img = np.array(raw)  # BGRA
-        img = np.ascontiguousarray(img[:, :, :3])  # descarta alpha -> BGR contíguo
-
-        # Redimensiona (sem dependências extras: usa amostragem simples via numpy/PIL do av)
-        frame = VideoFrame.from_ndarray(img, format="bgr24")
-        if (frame.width, frame.height) != (self._target_w, self._target_h):
-            frame = frame.reformat(width=self._target_w, height=self._target_h)
+        loop = asyncio.get_event_loop()
+        frame = await loop.run_in_executor(self._executor, self._capture_and_convert)
 
         pts = int(self._frame_count * (90000 / self._fps))
         frame.pts = pts
         frame.time_base = self._time_base
         self._frame_count += 1
         return frame
+
+    def close(self):
+        """Encerra a thread dedicada de captura. Chamar quando a conexão terminar."""
+        self._executor.shutdown(wait=False)
 
 
 # --------------------------------------------------------------------------
@@ -323,8 +350,12 @@ async def websocket_handler(request: web.Request):
                 @pc.on("connectionstatechange")
                 async def on_state_change():
                     log.info("Estado da conexão WebRTC: %s", pc.connectionState)
-                    if pc.connectionState in ("failed", "closed", "disconnected"):
+                    # "disconnected" pode ser transitório (o ICE tenta se
+                    # recuperar sozinho); só encerramos de fato em "failed"
+                    # (falha definitiva) ou "closed" (já foi fechada).
+                    if pc.connectionState in ("failed", "closed"):
                         pcs.discard(pc)
+                        screen_track.close()
                         await pc.close()
 
                 offer = RTCSessionDescription(sdp=data["sdp"], type=data["sdpType"])
@@ -369,6 +400,8 @@ async def websocket_handler(request: web.Request):
     except Exception as exc:
         log.exception("Erro na sessão de %s: %s", peer_ip, exc)
     finally:
+        if screen_track is not None:
+            screen_track.close()
         if pc is not None:
             pcs.discard(pc)
             await pc.close()
