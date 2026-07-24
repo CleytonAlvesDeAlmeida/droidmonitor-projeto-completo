@@ -51,7 +51,7 @@ import socket
 # Configuração
 # --------------------------------------------------------------------------
 
-APP_NAME = "DroidMonitor"
+APP_NAME = "NuDuck"
 PORT = 8765
 SERVICE_TYPE = "_droidmonitor._tcp.local."
 
